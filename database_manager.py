@@ -1,24 +1,35 @@
 """
-Local SQLite database manager for storing analytics data.
-Stores LinkedIn and Twitter post metrics locally (not in Notion).
+Database manager for storing analytics data in Supabase (PostgreSQL).
+Stores LinkedIn and Twitter post metrics persistently in the cloud.
 """
 
 import os
 from datetime import datetime
 from typing import Optional
-from pathlib import Path
 
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, Float, Text
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, Float, Text, BigInteger
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import QueuePool
 import pandas as pd
 
-# Database setup
-BASE_DIR = Path(__file__).parent
-DB_PATH = BASE_DIR / "data" / "analytics.db"
-DB_PATH.parent.mkdir(exist_ok=True)
+from config import DATABASE_URL
 
-engine = create_engine(f"sqlite:///{DB_PATH}", echo=False)
+# Database setup - use Supabase PostgreSQL
+if not DATABASE_URL:
+    raise ValueError("DATABASE_URL not configured. Please set it in your .env or Streamlit secrets.")
+
+# Create engine with connection pooling for cloud deployment
+engine = create_engine(
+    DATABASE_URL,
+    poolclass=QueuePool,
+    pool_size=5,
+    max_overflow=10,
+    pool_timeout=30,
+    pool_recycle=1800,  # Recycle connections after 30 minutes
+    echo=False
+)
+
 Session = sessionmaker(bind=engine)
 Base = declarative_base()
 
@@ -28,11 +39,11 @@ class LinkedInPost(Base):
     __tablename__ = "linkedin_posts"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    post_id = Column(String(255), unique=True, nullable=False)
+    post_id = Column(String(255), unique=True, nullable=False, index=True)
     url = Column(Text)
     content = Column(Text)
     date_posted = Column(DateTime)
-    views = Column(Integer, default=0)
+    views = Column(BigInteger, default=0)
     likes = Column(Integer, default=0)
     comments = Column(Integer, default=0)
     reposts = Column(Integer, default=0)
@@ -44,11 +55,11 @@ class TwitterPost(Base):
     __tablename__ = "twitter_posts"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    tweet_id = Column(String(255), unique=True, nullable=False)
+    tweet_id = Column(String(255), unique=True, nullable=False, index=True)
     url = Column(Text)
     content = Column(Text)
     date_posted = Column(DateTime)
-    views = Column(Integer, default=0)
+    views = Column(BigInteger, default=0)
     likes = Column(Integer, default=0)
     retweets = Column(Integer, default=0)
     replies = Column(Integer, default=0)
@@ -61,10 +72,10 @@ class FollowerSnapshot(Base):
     __tablename__ = "follower_snapshots"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    platform = Column(String(50), nullable=False)  # 'linkedin' or 'twitter'
+    platform = Column(String(50), nullable=False, index=True)
     follower_count = Column(Integer, nullable=False)
     following_count = Column(Integer, default=0)
-    recorded_at = Column(DateTime, default=datetime.utcnow)
+    recorded_at = Column(DateTime, default=datetime.utcnow, index=True)
 
 
 class DailyImpressions(Base):
@@ -72,14 +83,14 @@ class DailyImpressions(Base):
     __tablename__ = "daily_impressions"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    platform = Column(String(50), nullable=False)
-    date = Column(DateTime, nullable=False)
-    total_impressions = Column(Integer, default=0)
+    platform = Column(String(50), nullable=False, index=True)
+    date = Column(DateTime, nullable=False, index=True)
+    total_impressions = Column(BigInteger, default=0)
     total_engagements = Column(Integer, default=0)
     recorded_at = Column(DateTime, default=datetime.utcnow)
 
 
-# Create tables
+# Create tables if they don't exist
 Base.metadata.create_all(engine)
 
 
@@ -237,10 +248,10 @@ class DatabaseManager:
                 "platform": "LinkedIn",
                 "content": post.content[:100] + "..." if post.content and len(post.content) > 100 else post.content,
                 "url": post.url,
-                "views": post.views,
-                "likes": post.likes,
+                "views": post.views or 0,
+                "likes": post.likes or 0,
                 "date": post.date_posted,
-                "engagement": post.likes + post.comments + post.reposts
+                "engagement": (post.likes or 0) + (post.comments or 0) + (post.reposts or 0)
             })
 
         for post in twitter_posts:
@@ -248,10 +259,10 @@ class DatabaseManager:
                 "platform": "Twitter",
                 "content": post.content[:100] + "..." if post.content and len(post.content) > 100 else post.content,
                 "url": post.url,
-                "views": post.views,
-                "likes": post.likes,
+                "views": post.views or 0,
+                "likes": post.likes or 0,
                 "date": post.date_posted,
-                "engagement": post.likes + post.retweets + post.replies + post.quotes
+                "engagement": (post.likes or 0) + (post.retweets or 0) + (post.replies or 0) + (post.quotes or 0)
             })
 
         df = pd.DataFrame(data)
@@ -295,8 +306,8 @@ def get_db() -> DatabaseManager:
 
 
 if __name__ == "__main__":
-    # Test the database
+    # Test the database connection
+    print("Testing Supabase connection...")
     with get_db() as db:
-        print("Database initialized successfully!")
-        print(f"Database path: {DB_PATH}")
+        print("Connected to Supabase successfully!")
         print(f"Stats: {db.get_stats_summary()}")

@@ -8,8 +8,9 @@ notion-client==2.2.1
 # Apify
 apify-client==1.6.4
 
-# Database
+# Database (Supabase/PostgreSQL)
 sqlalchemy==2.0.25
+psycopg2-binary==2.9.9
 pandas==2.1.4
 
 # Dashboard
