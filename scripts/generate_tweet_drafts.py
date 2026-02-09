@@ -1,11 +1,11 @@
 """
-Script to read topics from Notion Twitter Calendar and generate tweet drafts using Claude.
+Script to read topics from Notion Twitter Calendar and generate tweet drafts using Gemini.
 """
 
 import os
 import sys
 from dotenv import load_dotenv
-import anthropic
+import google.generativeai as genai
 
 # Add parent directory to path for imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -14,10 +14,13 @@ from notion_client import get_notion
 
 load_dotenv()
 
+# Configure Gemini
+genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+
 
 def generate_tweet(topic: str, style: str = "professional") -> str:
     """
-    Generate a tweet draft using Claude.
+    Generate a tweet draft using Gemini.
 
     Args:
         topic: The topic/title to write a tweet about
@@ -26,7 +29,7 @@ def generate_tweet(topic: str, style: str = "professional") -> str:
     Returns:
         Generated tweet text
     """
-    client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+    model = genai.GenerativeModel("gemini-1.5-flash")
 
     prompt = f"""Write a single tweet about the following topic. The tweet should be:
 - Under 280 characters
@@ -38,15 +41,8 @@ Topic: {topic}
 
 Respond with ONLY the tweet text, nothing else."""
 
-    message = client.messages.create(
-        model="claude-3-5-sonnet-20241022",
-        max_tokens=200,
-        messages=[
-            {"role": "user", "content": prompt}
-        ]
-    )
-
-    return message.content[0].text.strip()
+    response = model.generate_content(prompt)
+    return response.text.strip()
 
 
 def generate_tweet_variations(topic: str, count: int = 3) -> list:
@@ -60,7 +56,7 @@ def generate_tweet_variations(topic: str, count: int = 3) -> list:
     Returns:
         List of tweet drafts
     """
-    client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+    model = genai.GenerativeModel("gemini-1.5-flash")
 
     prompt = f"""Write {count} different tweet variations about the following topic. Each tweet should be:
 - Under 280 characters
@@ -75,19 +71,12 @@ Format your response as:
 2. [tweet 2]
 3. [tweet 3]"""
 
-    message = client.messages.create(
-        model="claude-3-5-sonnet-20241022",
-        max_tokens=500,
-        messages=[
-            {"role": "user", "content": prompt}
-        ]
-    )
-
-    response = message.content[0].text.strip()
+    response = model.generate_content(prompt)
+    response_text = response.text.strip()
 
     # Parse the numbered list
     tweets = []
-    for line in response.split("\n"):
+    for line in response_text.split("\n"):
         line = line.strip()
         if line and line[0].isdigit() and "." in line:
             tweet = line.split(".", 1)[1].strip()

@@ -17,5 +17,5 @@ pandas==2.1.4
 streamlit==1.31.0
 plotly==5.18.0
 
-# LLM (for tweet generation)
-anthropic==0.18.1
+# LLM (for content generation)
+google-generativeai==0.8.4
