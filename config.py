@@ -35,6 +35,4 @@ def get_secret(key: str, default: str = "") -> str:
 DATABASE_URL = get_secret("DATABASE_URL")
 APIFY_API_TOKEN = get_secret("APIFY_API_TOKEN")
 NOTION_TOKEN = get_secret("NOTION_TOKEN")
-PIPELINE_DB_ID = get_secret("PIPELINE_DB_ID")
-TWITTER_CALENDAR_DB_ID = get_secret("TWITTER_CALENDAR_DB_ID")
 ANTHROPIC_API_KEY = get_secret("ANTHROPIC_API_KEY")

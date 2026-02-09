@@ -13,10 +13,10 @@ load_dotenv()
 class NotionManager:
     """Manager for Notion database operations."""
 
-    def __init__(self):
+    def __init__(self, pipeline_db_id: str = "", twitter_calendar_db_id: str = ""):
         self.client = Client(auth=os.getenv("NOTION_TOKEN"))
-        self.pipeline_db_id = os.getenv("PIPELINE_DB_ID")
-        self.twitter_calendar_db_id = os.getenv("TWITTER_CALENDAR_DB_ID")
+        self.pipeline_db_id = pipeline_db_id
+        self.twitter_calendar_db_id = twitter_calendar_db_id
 
     # Content Pipeline Operations
     def add_to_pipeline(self, title: str, original_url: str, status: str = "Inspiration") -> dict:
