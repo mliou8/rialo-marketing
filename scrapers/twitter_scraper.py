@@ -12,15 +12,15 @@ from apify_client import ApifyClient
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from database_manager import get_db
-from config import APIFY_API_TOKEN, TWITTER_USERNAME
+from config import APIFY_API_TOKEN
 
 
 class TwitterScraper:
-    """Scraper for Twitter/X posts and profile data."""
+    """Scraper for Twitter/X posts and profile data using Apify."""
 
-    def __init__(self):
+    def __init__(self, username: str = ""):
         self.client = ApifyClient(APIFY_API_TOKEN)
-        self.username = (TWITTER_USERNAME or "").replace("@", "")
+        self.username = username.replace("@", "")
 
     def scrape_tweets(self, max_tweets: int = 50) -> list:
         """

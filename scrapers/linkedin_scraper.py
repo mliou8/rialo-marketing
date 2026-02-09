@@ -12,15 +12,15 @@ from apify_client import ApifyClient
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from database_manager import get_db
-from config import APIFY_API_TOKEN, LINKEDIN_PROFILE_URL
+from config import APIFY_API_TOKEN
 
 
 class LinkedInScraper:
-    """Scraper for LinkedIn posts and profile data."""
+    """Scraper for LinkedIn posts and profile data using Apify."""
 
-    def __init__(self):
+    def __init__(self, profile_url: str = ""):
         self.client = ApifyClient(APIFY_API_TOKEN)
-        self.profile_url = LINKEDIN_PROFILE_URL
+        self.profile_url = profile_url
 
     def scrape_posts(self, max_posts: int = 50) -> list:
         """
