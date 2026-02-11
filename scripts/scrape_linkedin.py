@@ -1,5 +1,5 @@
 """
-Script to scrape LinkedIn posts using Apify and save them to Notion Content Pipeline.
+Script to scrape LinkedIn posts using Apify and save them to the Content Pipeline.
 """
 
 import os
@@ -11,7 +11,7 @@ from apify_client import ApifyClient
 # Add parent directory to path for imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from notion_client import get_notion
+from supabase_content import get_content_manager
 
 load_dotenv()
 
@@ -65,9 +65,9 @@ def extract_post_title(content: str, max_length: int = 100) -> str:
     return first_line if first_line else content[:max_length] + "..."
 
 
-def save_posts_to_notion(posts: list) -> int:
+def save_posts_to_pipeline(posts: list) -> int:
     """
-    Save scraped LinkedIn posts to Notion Content Pipeline.
+    Save scraped LinkedIn posts to Content Pipeline.
 
     Args:
         posts: List of post data from Apify
@@ -75,33 +75,33 @@ def save_posts_to_notion(posts: list) -> int:
     Returns:
         Number of posts saved
     """
-    notion = get_notion()
     saved_count = 0
 
-    for post in posts:
-        try:
-            content = post.get("text", post.get("content", ""))
-            url = post.get("url", post.get("postUrl", ""))
+    with get_content_manager() as cm:
+        for post in posts:
+            try:
+                content = post.get("text", post.get("content", ""))
+                url = post.get("url", post.get("postUrl", ""))
 
-            title = extract_post_title(content)
+                title = extract_post_title(content)
 
-            notion.add_to_pipeline(
-                title=title,
-                original_url=url,
-                status="Inspiration"
-            )
-            saved_count += 1
-            print(f"Saved: {title[:50]}...")
+                cm.add_to_pipeline(
+                    title=title,
+                    original_url=url,
+                    status="Inspiration"
+                )
+                saved_count += 1
+                print(f"Saved: {title[:50]}...")
 
-        except Exception as e:
-            print(f"Error saving post: {e}")
-            continue
+            except Exception as e:
+                print(f"Error saving post: {e}")
+                continue
 
     return saved_count
 
 
 def main():
-    """Main function to run the LinkedIn to Notion pipeline."""
+    """Main function to run the LinkedIn scraping pipeline."""
     profile_url = os.getenv("LINKEDIN_PROFILE_URL")
 
     if not profile_url:
@@ -113,8 +113,8 @@ def main():
     print(f"Found {len(posts)} posts")
 
     if posts:
-        saved = save_posts_to_notion(posts)
-        print(f"Saved {saved} posts to Notion Content Pipeline")
+        saved = save_posts_to_pipeline(posts)
+        print(f"Saved {saved} posts to Content Pipeline")
     else:
         print("No posts found to save")
 

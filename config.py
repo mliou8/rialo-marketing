@@ -34,5 +34,4 @@ def get_secret(key: str, default: str = "") -> str:
 # Export commonly used config values
 DATABASE_URL = get_secret("DATABASE_URL")
 APIFY_API_TOKEN = get_secret("APIFY_API_TOKEN")
-NOTION_TOKEN = get_secret("NOTION_TOKEN")
 GEMINI_API_KEY = get_secret("GEMINI_API_KEY")

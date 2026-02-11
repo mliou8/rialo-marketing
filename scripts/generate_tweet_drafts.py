@@ -1,5 +1,5 @@
 """
-Script to read topics from Notion Twitter Calendar and generate tweet drafts using Gemini.
+Script to read topics from Twitter Calendar and generate tweet drafts using Gemini.
 """
 
 import os
@@ -10,7 +10,7 @@ import google.generativeai as genai
 # Add parent directory to path for imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from notion_client import get_notion
+from supabase_content import get_content_manager
 
 load_dotenv()
 
@@ -90,38 +90,38 @@ def process_calendar_items(dry_run: bool = False) -> int:
     Process Twitter Calendar items without drafts and generate tweets.
 
     Args:
-        dry_run: If True, don't save to Notion, just print
+        dry_run: If True, don't save to database, just print
 
     Returns:
         Number of items processed
     """
-    notion = get_notion()
-
-    # Get items that don't have drafts yet
-    items = notion.get_twitter_calendar_items(has_draft=False)
-    print(f"Found {len(items)} items without drafts")
-
     processed = 0
-    for item in items:
-        try:
-            title = notion.get_item_title(item)
-            if not title:
-                print("Skipping item with no title")
+
+    with get_content_manager() as cm:
+        # Get items that don't have drafts yet
+        items = cm.get_twitter_calendar_items(has_draft=False)
+        print(f"Found {len(items)} items without drafts")
+
+        for item in items:
+            try:
+                title = cm.get_item_title(item)
+                if not title:
+                    print("Skipping item with no title")
+                    continue
+
+                print(f"\nGenerating tweet for: {title}")
+                tweet = generate_tweet(title)
+                print(f"Draft: {tweet}")
+
+                if not dry_run:
+                    cm.update_twitter_draft(item["id"], tweet)
+                    print("Saved to database!")
+
+                processed += 1
+
+            except Exception as e:
+                print(f"Error processing item: {e}")
                 continue
-
-            print(f"\nGenerating tweet for: {title}")
-            tweet = generate_tweet(title)
-            print(f"Draft: {tweet}")
-
-            if not dry_run:
-                notion.update_twitter_draft(item["id"], tweet)
-                print("Saved to Notion!")
-
-            processed += 1
-
-        except Exception as e:
-            print(f"Error processing item: {e}")
-            continue
 
     return processed
 
@@ -130,7 +130,7 @@ def main():
     """Main function to generate tweet drafts."""
     import argparse
 
-    parser = argparse.ArgumentParser(description="Generate tweet drafts from Notion calendar")
+    parser = argparse.ArgumentParser(description="Generate tweet drafts from Twitter calendar")
     parser.add_argument("--dry-run", action="store_true", help="Don't save to Notion")
     parser.add_argument("--topic", type=str, help="Generate a single tweet for a specific topic")
     parser.add_argument("--variations", action="store_true", help="Generate multiple variations")

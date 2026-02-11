@@ -12,10 +12,17 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from dotenv import load_dotenv
+import google.generativeai as genai
 
 from database_manager import get_db
+from supabase_content import get_content_manager
 from scrapers.linkedin_scraper import LinkedInScraper
 from scrapers.twitter_scraper import TwitterScraper
+from config import GEMINI_API_KEY
+
+# Configure Gemini
+if GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY)
 
 load_dotenv()
 
@@ -66,37 +73,52 @@ def refresh_data():
 
 
 def render_sidebar():
-    """Render the sidebar with refresh button and filters."""
+    """Render the sidebar with navigation and filters."""
     with st.sidebar:
         st.title("📊 Marketing Dashboard")
         st.markdown("---")
 
-        # Refresh data button
-        if st.button("🔄 Refresh Data", use_container_width=True):
-            refresh_data()
-            st.rerun()
+        # Page navigation
+        page = st.radio(
+            "Navigate",
+            ["📈 Analytics", "✍️ Content Generator"],
+            index=0,
+            label_visibility="collapsed"
+        )
 
         st.markdown("---")
 
-        # Platform filter
-        platform = st.selectbox(
-            "Platform",
-            ["All", "LinkedIn", "Twitter"],
-            index=0
-        )
+        # Analytics-specific controls
+        if page == "📈 Analytics":
+            # Refresh data button
+            if st.button("🔄 Refresh Data", use_container_width=True):
+                refresh_data()
+                st.rerun()
 
-        # Date range filter
-        date_range = st.selectbox(
-            "Date Range",
-            ["Last 7 days", "Last 30 days", "Last 90 days", "All time"],
-            index=1
-        )
+            st.markdown("---")
+
+            # Platform filter
+            platform = st.selectbox(
+                "Platform",
+                ["All", "LinkedIn", "Twitter"],
+                index=0
+            )
+
+            # Date range filter
+            date_range = st.selectbox(
+                "Date Range",
+                ["Last 7 days", "Last 30 days", "Last 90 days", "All time"],
+                index=1
+            )
+        else:
+            platform = "All"
+            date_range = "All time"
 
         st.markdown("---")
         st.markdown("**Last Updated**")
         st.caption(datetime.now().strftime("%Y-%m-%d %H:%M"))
 
-        return platform, date_range
+        return page, platform, date_range
 
 
 def render_metrics(db):
@@ -330,40 +352,193 @@ def render_recent_activity(db):
             st.info("No tweets found")
 
 
+# ============== Content Generator Functions ==============
+
+def generate_tweet_for_topic(topic: str) -> str:
+    """Generate a tweet using Gemini."""
+    if not GEMINI_API_KEY:
+        return "[Error: GEMINI_API_KEY not configured]"
+
+    model = genai.GenerativeModel("gemini-1.5-flash")
+
+    prompt = f"""Write a single tweet about the following topic. The tweet should be:
+- Under 280 characters
+- Professional but engaging
+- Include 1-2 relevant hashtags if appropriate
+
+Topic: {topic}
+
+Respond with ONLY the tweet text, nothing else."""
+
+    response = model.generate_content(prompt)
+    return response.text.strip()
+
+
+def render_content_generator():
+    """Render the content generator page."""
+    st.title("✍️ Content Generator")
+    st.markdown("Add topics and generate tweet drafts with AI")
+    st.markdown("---")
+
+    # Add new topics
+    st.subheader("Add Topics")
+
+    tab_single, tab_bulk = st.tabs(["Single Topic", "Bulk Add"])
+
+    with tab_single:
+        with st.form("add_topic_form", clear_on_submit=True):
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                new_topic = st.text_input("Topic/Title", placeholder="Enter a topic or theme for a tweet...")
+            with col2:
+                st.write("")  # Spacing
+                submit = st.form_submit_button("Add", use_container_width=True)
+
+            if submit and new_topic.strip():
+                with get_content_manager() as cm:
+                    cm.add_to_twitter_calendar(topic=new_topic.strip())
+                st.success(f"Added: {new_topic}")
+                st.rerun()
+
+    with tab_bulk:
+        with st.form("bulk_add_form", clear_on_submit=True):
+            bulk_topics = st.text_area(
+                "Topics (one per line)",
+                placeholder="Topic 1\nTopic 2\nTopic 3",
+                height=150
+            )
+            bulk_submit = st.form_submit_button("Add All Topics", use_container_width=True)
+
+            if bulk_submit and bulk_topics.strip():
+                topics = [t.strip() for t in bulk_topics.strip().split("\n") if t.strip()]
+                if topics:
+                    with get_content_manager() as cm:
+                        for topic in topics:
+                            cm.add_to_twitter_calendar(topic=topic)
+                    st.success(f"Added {len(topics)} topics!")
+                    st.rerun()
+
+    st.markdown("---")
+
+    # Two columns: Pending topics and Generated drafts
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.subheader("📝 Pending Topics")
+        with get_content_manager() as cm:
+            pending_items = cm.get_twitter_calendar_items(has_draft=False)
+
+        if pending_items:
+            st.info(f"{len(pending_items)} topics waiting for content")
+
+            # Generate content button
+            if st.button("🚀 Generate Content", type="primary", use_container_width=True):
+                progress = st.progress(0)
+                status = st.empty()
+
+                with get_content_manager() as cm:
+                    for i, item in enumerate(pending_items):
+                        topic = cm.get_item_title(item)
+                        status.text(f"Generating for: {topic[:50]}...")
+
+                        try:
+                            tweet = generate_tweet_for_topic(topic)
+                            cm.update_twitter_draft(item["id"], tweet)
+                        except Exception as e:
+                            st.error(f"Error generating for '{topic}': {e}")
+
+                        progress.progress((i + 1) / len(pending_items))
+
+                status.text("Done!")
+                st.success(f"Generated {len(pending_items)} tweets!")
+                st.rerun()
+
+            # List pending topics
+            for item in pending_items:
+                topic = item.get("properties", {}).get("Topic", {}).get("title", [{}])[0].get("text", {}).get("content", "")
+                with st.container():
+                    cols = st.columns([4, 1])
+                    with cols[0]:
+                        st.write(f"• {topic}")
+                    with cols[1]:
+                        if st.button("🗑️", key=f"del_{item['id']}", help="Delete topic"):
+                            # Delete functionality could be added here
+                            pass
+        else:
+            st.info("No pending topics. Add some above!")
+
+    with col2:
+        st.subheader("✅ Generated Drafts")
+        with get_content_manager() as cm:
+            drafted_items = cm.get_twitter_calendar_items(has_draft=True)
+
+        if drafted_items:
+            st.success(f"{len(drafted_items)} drafts ready")
+
+            for item in drafted_items:
+                topic = item.get("properties", {}).get("Topic", {}).get("title", [{}])[0].get("text", {}).get("content", "")
+                draft = item.get("properties", {}).get("Draft", {}).get("rich_text", [{}])
+                draft_text = draft[0].get("text", {}).get("content", "") if draft else ""
+
+                with st.expander(f"📌 {topic[:40]}..." if len(topic) > 40 else f"📌 {topic}"):
+                    st.markdown("**Topic:**")
+                    st.write(topic)
+                    st.markdown("**Generated Tweet:**")
+                    st.code(draft_text, language=None)
+
+                    # Copy button
+                    st.button("📋 Copy", key=f"copy_{item['id']}",
+                              on_click=lambda t=draft_text: st.write(t),
+                              help="Click to show tweet for copying")
+
+                    # Regenerate button
+                    if st.button("🔄 Regenerate", key=f"regen_{item['id']}"):
+                        with st.spinner("Regenerating..."):
+                            with get_content_manager() as cm:
+                                new_tweet = generate_tweet_for_topic(topic)
+                                cm.update_twitter_draft(item["id"], new_tweet)
+                        st.rerun()
+        else:
+            st.info("No drafts yet. Generate content from pending topics!")
+
+
 def main():
     """Main dashboard function."""
     # Sidebar
-    platform_filter, date_range = render_sidebar()
+    page, platform_filter, date_range = render_sidebar()
 
-    # Main content
-    st.title("📊 Marketing Analytics Dashboard")
-    st.markdown("Track your LinkedIn and Twitter performance metrics")
-    st.markdown("---")
-
-    with get_db() as db:
-        # Top metrics
-        render_metrics(db)
-
+    if page == "✍️ Content Generator":
+        render_content_generator()
+    else:
+        # Analytics page
+        st.title("📊 Marketing Analytics Dashboard")
+        st.markdown("Track your LinkedIn and Twitter performance metrics")
         st.markdown("---")
 
-        # Charts row
-        col1, col2 = st.columns(2)
+        with get_db() as db:
+            # Top metrics
+            render_metrics(db)
 
-        with col1:
-            render_follower_chart(db, platform_filter)
+            st.markdown("---")
 
-        with col2:
-            render_impressions_chart(db, platform_filter)
+            # Charts row
+            col1, col2 = st.columns(2)
 
-        st.markdown("---")
+            with col1:
+                render_follower_chart(db, platform_filter)
 
-        # Top posts leaderboard
-        render_top_posts(db, platform_filter)
+            with col2:
+                render_impressions_chart(db, platform_filter)
 
-        st.markdown("---")
+            st.markdown("---")
 
-        # Recent activity
-        render_recent_activity(db)
+            # Top posts leaderboard
+            render_top_posts(db, platform_filter)
+
+            st.markdown("---")
+
+            # Recent activity
+            render_recent_activity(db)
 
 
 if __name__ == "__main__":
